@@ -28,7 +28,6 @@ import {
 import { Web3 } from "web3";
 import NetworkState from "@/utils/NetworkState.json";
 import USA from "@/utils/USA.json";
-import { task } from "@langchain/langgraph";
 
 const web3 = new Web3(
     "https://base-sepolia.g.alchemy.com/v2/CIy2ezuBM2p9iHPNXw1jN_SMRelF4Gmq"
@@ -59,10 +58,6 @@ const AGENT_RESPONSES: Record<string, string[]> = {
     Linda: ["Hey!", "Hope you're having a great day!", "Let's chat!"],
 };
 
-const DEFAULT_MESSAGE: Record<string, string> ={
-    Sara: "Hi, I'm Sara. Welcome to the United States of AI Agents. I can help you find any agents that suits you. What are you looking for?"
-}
-
 type AgentData = {
     [key: string]: {
         url: string;
@@ -73,16 +68,11 @@ type AgentData = {
 const agentData: AgentData = {
     Sara: {
         url: "/api/travelling-salesman",
-        address: "0x13CA33C2F70145A960E030ef32509cA49702538d",
     },
     Leonardo: {
         url: `/api/coinbase-agents/twitterAnalysisAgent/agent`,
-        address: "0x3C6294369a00437dC5f81Da293a4DE43e60023E9",
+        address: "0x13CA33C2F70145A960E030ef32509cA49702538d",
     },
-    Troy: {
-        url: `/api/coinbase-agents/tokenSwapperAgent/agent`,
-        address: DEFAULT_AGENT_ADDRESS,
-    }
 };
 
 const TIP_AMOUNTS = [1, 5, 10, 25, 50, 75, 100];
@@ -100,7 +90,6 @@ export function ChatInterface({
         Record<string, ChatMessage[]>
     >({});
     const [message, setMessage] = useState("");
-    const [taskRequested, setTaskRequested] = useState(false);
     const [tipAmount, setTipAmount] = useState<number | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -121,6 +110,10 @@ export function ChatInterface({
             .call();
         return taskId;
     }
+
+    useEffect(() => {
+        async function checkAllowance() {}
+    }, []);
 
     useEffect(() => {
         if (isChatting && currentAgent) {
@@ -179,15 +172,6 @@ export function ChatInterface({
             }));
         }, 500);
 
-        let promptedMessage = message;
-        if (tipAmount) {
-            const taskId = await getTaskId();
-            promptedMessage =
-                `Help me approve the task request with the id ${taskId} in the Network State smart contract, then help me with: ` +
-                message;
-            //alert(promptedMessage);
-        }
-
         // Fetch response from agent
         if (agentData[currentAgent]) {
             try {
@@ -197,7 +181,7 @@ export function ChatInterface({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         agentName: currentAgent,
-                        userMessage: promptedMessage,
+                        userMessage: message,
                     }),
                 });
 
@@ -225,20 +209,7 @@ export function ChatInterface({
                 console.error(error);
             }
         } else {
-            // const blabla = await fetch(
-            //     "/api/coinbase-agents/twitterAnalysisAgent/agent",
-            //     {
-            //       method: "POST",
-            //       headers: { "Content-Type": "application/json" },
-            //       body: JSON.stringify({
-            //         agentName: "twitterAnalysisAgent",
-            //         userMessage:
-            //           "Hi, I am a developer, can you send me some faucet tokens. Please do it on base-sepolia.",
-            //       }),
-            //     }
-            // );
-
-            // For other agents, use predefined responses
+            // For other agents without API, use hardcoded responses
             const fallbackResponse =
                 AGENT_RESPONSES[currentAgent]?.[
                     Math.floor(
@@ -269,12 +240,10 @@ export function ChatInterface({
         // Confirm Tipping Transaction
         const tip = tipAmount ? tipAmount : 0;
         if (tip > 0) {
-            // Check Balances if tip amount is specified
             if (
                 parseInt(allowance ? allowance.toString() : "0") <
                 tip * 10 ** 18
             ) {
-                // Request Token Approval if allowance is not enough
                 await approveToken({
                     ...tokenContractConfig,
                     functionName: "approve",
@@ -284,21 +253,16 @@ export function ChatInterface({
                     ],
                 });
             } else {
-                // Send Message if request has been approved
-                if (taskRequested) {
-                    handleSendMessage();
-                } else {
-                    await writeContract({
-                        ...networkStateContractConfig,
-                        functionName: 'payAgent',
-                        args: [agentData[currentAgent].address, tip*10**18],
-                    })
-                    setTaskRequested(true);
-                }
+                if(!currentAgent){alert("Agent Not Found");return;}
+                await writeContract({
+                    ...networkStateContractConfig,
+                    functionName: "payAgent",
+                    args: [agentData[currentAgent].address, tip * 10 ** 18],
+                });
+                //handleSendMessage();
             }
         } else {
             handleSendMessage();
-            setTaskRequested(false);
         }
     };
 
@@ -332,17 +296,17 @@ export function ChatInterface({
                 )}
 
                 {/* Chat Messages */}
-                <CardContent className="flex-1 p-0">
+                <CardContent className="flex-1 py-0 px-6 overflow-hidden">
                     {/* Currently hardcoded the height*/}
                     <ScrollArea className="h-[72vh] overflow-y-auto flex flex-col gap-2">
-                        <div className="flex flex-col">
+                        <div className="flex flex-col max-w-[90%]">
                             {chatHistory[currentAgent!]?.map((msg, index) => (
                                 <div
                                     key={index}
                                     className={`mx-1 p-2 px-3 rounded-2xl shadow-xs max-w-[75%] my-2 bg-white/95 text-zinc-700 border-0 break-words ${
                                         msg.sender === "user"
-                                            ? "shadow-blue-700 self-end text-right mr-5"
-                                            : "shadow-purple-600 self-start text-left ml-4"
+                                            ? "shadow-blue-700 self-end text-right"
+                                            : "shadow-purple-600 self-start text-left"
                                     }`}
                                 >
                                     {msg.sender === "typing" ? (
